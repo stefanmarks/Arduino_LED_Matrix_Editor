@@ -148,8 +148,7 @@ function keyPressed(event)
 
     // TOPBAR ACTIONS
     case 32: // SPACE => PLAY
-      var loop = keyIsDown(SHIFT) ? true : false;
-      playBack(currentFrame, loop);
+      playBack(currentFrame);
       break;
 	  
     case 85: // Ctrl + U => LOAD PROJECT

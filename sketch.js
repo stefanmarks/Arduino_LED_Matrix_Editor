@@ -9,9 +9,9 @@
 //  - 
 
 const appState = {
-  IDLE: "idle",
+  IDLE:    "idle",
   DRAWING: "drawing",
-  ERASING: "erasing"
+  ERASING: "erasing",
   PLAYING: "playing"
 }
 
@@ -106,7 +106,9 @@ async function signalSuccess()
   ew.classList.remove('success');
 }
 
-function createMatrix(_rows, _cols) {
+
+function createMatrix(_rows, _cols) 
+{
   var index = 0;
   var coords = { "col": 0, "row": 0 };
   for (r = 0; r < _rows; r++) {
@@ -121,7 +123,9 @@ function createMatrix(_rows, _cols) {
   commitFrame(currentFrame);
 }
 
-function renderMatrix() {
+
+function renderMatrix() 
+{
   for (r = 0; r < rows; r++) {
     for (c = 0; c < columns; c++) {
       let cell = frameBuffer[r][c]
@@ -138,7 +142,9 @@ function renderMatrix() {
   }
 }
 
-function renderFrameInfo() {
+
+function renderFrameInfo() 
+{
   push();
   textSize(28);
   frameString = "frame:" + (currentFrame + 1) + "/" + (frames.length);
@@ -149,7 +155,9 @@ function renderFrameInfo() {
   pop();
 }
 
-function mouseAction() {
+
+function mouseAction() 
+{
   if (!(mouseX < width && mouseY < height)) {
     hoverCell = null;
     lastHoverCell = hoverCell;
@@ -189,7 +197,9 @@ function mouseAction() {
   }
 }
 
-function mouseMoved() {
+
+function mouseMoved() 
+{
   for (r = 0; r < rows; r++) {
     for (c = 0; c < columns; c++) {
       let cell = frameBuffer[r][c]
@@ -197,16 +207,17 @@ function mouseMoved() {
       mV = createVector(mouseX, mouseY);
       distance = mV.dist(cV);
       if (distance < (cellSize / 2)) {
-			if ((currentState == appState.DRAWING) || (currentState == appState.ERASING)) {
-				changeState(frameBuffer[cell.row][cell.col].state == 0 ? appState.DRAWING : appState.ERASING);
-            }
+		if ((currentState == appState.DRAWING) || (currentState == appState.ERASING)) {
+		  changeState(frameBuffer[cell.row][cell.col].state == 0 ? appState.DRAWING : appState.ERASING);
+		}
 	  }
 	}
   }
 }
 
 
-function renderThumbnail() {
+function renderThumbnail() 
+{
   const framePreviewID = previewsList[currentFrame]
   canvas = document.getElementById(`canvas-${framePreviewID}`);
   c2d = canvas.getContext('2d');
@@ -227,6 +238,7 @@ function renderThumbnail() {
   }
 }
 
+
 function showHelp()
 {
   displayHelp = !displayHelp;
@@ -244,40 +256,9 @@ function showHelp()
   }
 }
 
-function highlightSection(section) {
-  const sections = ['topbar-section', 'editor-container', 'footer']
-  let id;
-  switch (section) {
-    case 'project':
-      id = 'topbar-section';
-      break;
-    case 'canvas':
-      id = 'editor-container';
-      break;
-    case 'timeline':
-      id = 'footer'
-      break;
-    default:
-      break;
-  }
-  const selectedSection = document.getElementById(id);
 
-  sections.forEach((currentSection) => {
-    let classSection = `${id}`
-    if (selectedSection.className !== `${id} highlight`) {
-      classSection = `${id} highlight`
-    }
-
-    if (currentSection === id) {
-      selectedSection.setAttribute('class', classSection)
-    } else {
-      document.getElementById(currentSection).setAttribute('class', `${currentSection}`)
-    }
-  })
-}
-
-function changeState(_newState) {
-
+function changeState(_newState) 
+{
   if(_newState == appState.PLAYING){
     stateBeforePlayback = currentState;
   }
@@ -285,7 +266,9 @@ function changeState(_newState) {
   currentState = _newState;
 }
 
-function setButtonClass(currentState) {
+
+function setButtonClass(currentState) 
+{
   const selectedButton = document.getElementById(currentState);
   if (!selectedButton) return;
   const currentClassName = selectedButton.className;
@@ -297,7 +280,8 @@ function setButtonClass(currentState) {
   })
 }
 
-function deleteFrame(_frameNumber = currentFrame) {
+function deleteFrame(_frameNumber = currentFrame) 
+{
   if (frames.length <= 1) {
     clearFrame();
     return;
@@ -310,12 +294,20 @@ function deleteFrame(_frameNumber = currentFrame) {
   goToFrame(currentFrame);
 }
 
-function deleteAllFrames() {
-  frames.forEach(() => deleteFrame())
-  clearFrame()
+
+function deleteAllFrames() 
+{
+  frames.length = 0;
+
+  const targetFrameID = previewsList.forEach((id) => { document.getElementById(id).parentElement.remove(); });
+  previewsList.length = 0;
+
+  disableButtons();
 }
 
-function deleteThumbnail(_frameNumber = currentFrame){
+
+function deleteThumbnail(_frameNumber = currentFrame)
+{
   const targetFrameID = previewsList[currentFrame]
   document.getElementById(targetFrameID).parentElement.remove()
   disableButtons();
@@ -758,7 +750,7 @@ function loadProject()
     const fReader       = new FileReader();
     fReader.onload = function (event) {
       var fileContent = event.target.result;
-      deleteAllFrames()
+      deleteAllFrames();
       frames = JSON.parse(fileContent);
       createFramesPreviews();
       goToFrame(0);
@@ -811,14 +803,10 @@ function saveProject()
 }
 
 
-function shiftMatrix(_direction, _wrap = false) 
+function shiftMatrix(_direction) 
 {
-  var wrapEnabled;
-  if (keyIsDown(ALT)) {
-    wrapEnabled = true;
-  } else {
-    wrapEnabled = false;
-  }
+  var wrapEnabled = keyIsDown(ALT);
+  tempFrame = offsetArray(baseFrame.matrix, _direction, wrapEnabled);
   
   for (let r = 0; r < rows; r++) {
     for (c = 0; c < columns; c++) {
@@ -830,14 +818,15 @@ function shiftMatrix(_direction, _wrap = false)
 }
 
 
-function playBack(_startFrame = currentFrame, _loop = false) 
+function playBack(_startFrame = currentFrame) 
 {
+  var loop = keyIsDown(SHIFT);
   clearTimeout(playbackInterval);
   if(currentState == appState.PLAYING){
     changeState(stateBeforePlayback);
   }else{
     changeState(appState.PLAYING);   
-    loopAnimation = _loop;
+    loopAnimation = loop;
     goToFrame(_startFrame);
     playNextFrame();
   }
