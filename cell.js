@@ -15,10 +15,10 @@
 */
 
 function Cell(_index, _itemID, _coords) {
-    this.cellColor = '#ECF1F1';
-    this.highlightColor = '#d35400';
-    this.currentColor = this.cellColor;
-    this.activeColor = '#374146'
+    this.cellColor      = '#374146'; // ECF1F1
+    this.highlightColor = '#D35400';
+    this.activeColor    = '#FF4146'; // 374146
+    this.currentColor   = this.cellColor;
     this.col = _coords.col;
     this.row = _coords.row;
     this.coords = _coords;
