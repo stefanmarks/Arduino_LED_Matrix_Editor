@@ -70,7 +70,7 @@ function setup()
   
   changeState(appState.DRAWING);
 
-  const livePreviewSupported = (navigator.serial == null);
+  const livePreviewSupported = (navigator.serial != null);
   if (!livePreviewSupported) {
     const livePreviewBtn = document.getElementById('live-preview-btn')
     livePreviewBtn.setAttribute('disabled', true);
