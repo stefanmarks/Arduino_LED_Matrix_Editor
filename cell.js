@@ -14,79 +14,55 @@
     Cleanup is in progress and refactoring will happen
 */
 
-function Cell(_index, _itemID, _coords) {
-    this.cellColor      = '#374146'; // ECF1F1
-    this.highlightColor = '#D35400';
-    this.activeColor    = '#FF4146'; // 374146
-    this.currentColor   = this.cellColor;
-    this.col = _coords.col;
-    this.row = _coords.row;
-    this.coords = _coords;
-    this.index = 0;
-    this.state = 0;
-    this.itemID = _itemID;
-    this.index  = _index;
-    this.centerVector = createVector(0, 0);
-    this.selected = false;
-	
-    this.getId = function() {
-        return this.index;
-    };
+function Cell(_index, _column, _row) 
+{
+    this.state        = 0;
+    this.currentColor = CELL_OFF_COLOR;
+    this.index        = _index;
+    this.coords       = { 'col' : _column, 'row' : _row};
+    this.selected     = false;
 
-    this.switchStatus = function() {
+	this.position = createVector(
+	  (_column * (CELL_SIZE + CELL_SPACING)) + ((CELL_SIZE / 2) + CELL_SPACING), 
+	  (_row    * (CELL_SIZE + CELL_SPACING)) + ((CELL_SIZE / 2) + CELL_SPACING)
+	);
+	
+    this.toggleState = function() 
+	{
         this.setState(!this.state);
     };
 
-    this.setState = function(_state) {
-        //if(_state == this.state) return;
+    this.setState = function(_state) 
+	{    
         this.state = _state;
-        if(_state == false){
-        	this.clear();
-        }
-        // this.updateView();
+		this.currentColor = this.state ? CELL_ON_COLOR : CELL_OFF_COLOR;    
     };
 
-    this.select = function(_select = true){
+    this.setSelected = function(_select = true)
+	{
         this.selected = _select;
-    }
+    };
 	
-    this.clear = function(){
-        this.state = 0;
-    }
-	
-    this.update = function() {
+    this.clear = function()
+	{
+        this.setState(0);
     };
 
-    this.render = function(){
-        rectMode(CENTER);
-        strokeWeight(0);
-        fill(this.currentColor);
-        rect(0, 0, cellSize, cellSize);
-
-        let borderColor = this.cellColor;
-        let cellBackgroundColor = this.cellColor;
-
-        // Update cell colors based on state and selection
-        if (this.state) {
-        cellBackgroundColor = this.activeColor;
-        borderColor = this.selected ? this.highlightColor : this.activeColor;
-        } else {
-            borderColor = this.selected ? this.highlightColor : this.cellColor;
-        }
-        
-        fill(borderColor);
-        rect(0, 0, cellSize, cellSize);
-        fill(cellBackgroundColor);
-        rect(0, 0, cellSize - 6, cellSize - 6);
-    }
-    this.highLight = function(){
-        this.currentColor = this.highlightColor;
-    }
-    this.darken = function(){
-        this.currentColor = this.cellColor;
-    }
-    this.getMemory = function(_format) {
-
+    this.render = function() 
+	{
+	  push();
+      rectMode(CENTER);
+      translate(this.position.x, this.position.y);
+      strokeWeight(0);
+      fill(this.selected ? CELL_HILIGHT_COLOR : CELL_OFF_COLOR);
+      rect(0, 0, CELL_SIZE, CELL_SIZE);
+      fill(this.currentColor);
+      rect(0, 0, CELL_SIZE - 6, CELL_SIZE - 6);
+	  pop();
+    };
+    
+    this.getMemory = function(_format) 
+	{
         var memory = {};
         memory.state = this.state;
         memory.color = this.color;

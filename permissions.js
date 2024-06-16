@@ -6,7 +6,7 @@
 if (navigator.clipboard) {
   navigator.clipboard.readText()
     .then(text => {
-      console.log('Clipboard contents:', text);
+      // nothing to do, all good
     })
     .catch(err => {
       console.error('Failed to read clipboard contents:', err);

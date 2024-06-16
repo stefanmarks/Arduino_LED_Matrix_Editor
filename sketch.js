@@ -22,8 +22,6 @@ const directions = {
   DOWN:  "down"
 }
 
-const DEFAULT_FRAME_DURATION = 100;
-
 let currentState        = appState.IDLE;
 let stateBeforePlayback = currentState;
 let actionEnabled       = false;
@@ -31,30 +29,22 @@ let actionEnabled       = false;
 var exportAnimationName = "animation";
 var exportFrameName     = "frame";
 
-var columns    = 12;
-var rows       = 8;
-var cellSize   = 40;
-var cellOffset = 2;
-
-var gridArea = { _x: 0, _y: 0, _width: 0, _height: 0 };
-
 var currentFrame         = 0;
-let playbackInterval;
 var loopAnimation        = false;
 var currentFrameDuration = DEFAULT_FRAME_DURATION;
+var playbackInterval;
 
-var frameBuffer  = new Array(rows);
-var frames       = new Array();
+var frameBuffer  = new Array(NUM_ROWS);
+var frameList    = new Array();
 var previewID    = 0;
 var previewsList = new Array();
-
 var baseFrame;
-let selectedCells;
 
-let uint32Buffer = new Uint32Array(3);
+let serialSendBuffer = new Uint32Array(3);
 
 var hoverCell;
 var lastHoverCell;
+
 
 /* UI */
 
@@ -64,22 +54,14 @@ var displayHelp = false;
 
 function setup() 
 {
-  /*  Create the editor canvas  */
-  const width  = cellOffset + columns * (cellSize + cellOffset);
-  const height = cellOffset + rows    * (cellSize + cellOffset);
-  currentFrameDuration = DEFAULT_FRAME_DURATION;
-  newFramePreview(true);
+  const width  = CELL_SPACING + NUM_COLUMNS * (CELL_SIZE + CELL_SPACING);
+  const height = CELL_SPACING + NUM_ROWS    * (CELL_SIZE + CELL_SPACING);
   createCanvas(width, height);
-  createMatrix(rows, columns);
   
-  selectedCells = {matrix: Array.from(Array(rows), () => new Array(columns).fill(0))};
-  
-  gridArea._x = cellOffset;
-  gridArea._y = cellOffset;
-  gridArea._width = (cellSize + cellOffset) * columns - cellOffset;
-  gridArea._height = (cellSize + cellOffset) * rows - cellOffset;
+  newFramePreview(true);  
 
-  /*  Editor will start in DRAWING mode */
+  createFrameBuffer(NUM_COLUMNS, NUM_ROWS);
+  commitFrameBuffer(0);
   
   changeState(appState.DRAWING);
 
@@ -90,16 +72,26 @@ function setup()
   }
 }
 
-function draw() {
+
+function draw() 
+{
+  if (hoverCell != lastHoverCell) 
+  {
+	if (lastHoverCell != null) { lastHoverCell.setSelected(false); }
+	lastHoverCell = hoverCell;
+	if (hoverCell != null) { hoverCell.setSelected(true); }
+  }
+	
   background('#C9D2D2');
-  renderMatrix();
+  renderFrameBuffer();
   //renderFrameInfo();
-  mouseAction();
-  
+  mouseAction();  
 }
+
 
 async function signalSuccess()
 {
+  // flash background green for a moment
   const ew = document.getElementById('editor-container');
   ew.classList.add('success');
   await new Promise(resolve => setTimeout(resolve, 250));
@@ -107,37 +99,31 @@ async function signalSuccess()
 }
 
 
-function createMatrix(_rows, _cols) 
+function createFrameBuffer(_cols, _rows) 
 {
-  var index = 0;
-  var coords = { "col": 0, "row": 0 };
-  for (r = 0; r < _rows; r++) {
-    frameBuffer[r] = new Array(columns);
-    for (c = 0; c < _cols; c++) {
-      coords.col = c;
-      coords.row = r;
-      newCell = new Cell(index, index, coords);
-      frameBuffer[r][c] = newCell;
+  var index = 0;  
+  for (r = 0; r < _rows; r++) 
+  {
+    frameBuffer[r] = new Array(_cols);
+    for (c = 0; c < _cols; c++) 
+	{
+      frameBuffer[r][c] = new Cell(index, c, r);
+	  index++;
     }
   }
-  commitFrame(currentFrame);
 }
 
 
-function renderMatrix() 
+function renderFrameBuffer() 
 {
-  for (r = 0; r < rows; r++) {
-    for (c = 0; c < columns; c++) {
-      let cell = frameBuffer[r][c]
-      push();
-      translate(cellOffset, cellOffset)
-      translate(cellSize / 2, cellSize / 2)
-      var positionVector = createVector(cell.col * (cellSize + cellOffset), cell.row * (cellSize + cellOffset));
-      cell.centerVector = positionVector;
-      translate(positionVector);
-      cell.update();
+  const numRows = frameBuffer.length;
+  const numCols = frameBuffer[0].length;
+  for (r = 0; r < numRows; r++) 
+  {
+    for (c = 0; c < numCols; c++) 
+	{
+      let cell = frameBuffer[r][c];
       cell.render();
-      pop();
     }
   }
 }
@@ -147,7 +133,7 @@ function renderFrameInfo()
 {
   push();
   textSize(28);
-  frameString = "frame:" + (currentFrame + 1) + "/" + (frames.length);
+  frameString = "frame:" + (currentFrame + 1) + "/" + (frameList.length);
   fill(0x55, 0x55, 0x55);
   textAlign(RIGHT, BASELINE);
   textSize(24);
@@ -158,41 +144,37 @@ function renderFrameInfo()
 
 function mouseAction() 
 {
-  if (!(mouseX < width && mouseY < height)) {
-    hoverCell = null;
-    lastHoverCell = hoverCell;
-    return;
+  if (!(mouseX < width && mouseY < height))
+  {
+	hoverCell = null;
+	return;
   }
 
-  /*
-    Render action radius.
-    This will not be visible because outside the canvas area,
-    but WILL BE KEPT HERE for future debugging purposes and
-    behaviour enhancements.
-    Might cause merging annoyances if removed from a fork 
-  */
-  
-  for (r = 0; r < rows; r++) {
-    for (c = 0; c < columns; c++) {
-      let cell = frameBuffer[r][c]
-      strokeWeight(1)
-      cV = createVector(cell.centerVector.x + cellOffset + cellSize / 2, cell.centerVector.y + cellOffset + cellSize / 2);
+  const numRows = frameBuffer.length;
+  const numCols = frameBuffer[0].length;
+  for (r = 0; r < numRows; r++) 
+  {
+    for (c = 0; c < numCols; c++) 
+	{
+      let cell = frameBuffer[r][c];
+      cV = cell.position;
       mV = createVector(mouseX, mouseY);
       distance = mV.dist(cV);
-      hoverCell = cell;
-      if (distance < (cellSize / 2)) {
+      if (distance < (CELL_SIZE / 2))
+	  {
         hoverCell = cell;
-        if (actionEnabled) {
-          if (currentState == appState.DRAWING) {
-            (frameBuffer[hoverCell.row][hoverCell.col]).setState(true);
-            commitFrame(currentFrame);
+        if (actionEnabled) 
+		{
+          if (currentState == appState.DRAWING) { 
+		    cell.setState(true);
+            commitFrameBuffer(currentFrame);
           }
           else if (currentState == appState.ERASING) {
-            (frameBuffer[hoverCell.row][hoverCell.col]).setState(false);
-            commitFrame(currentFrame);
+            cell.setState(false);
+            commitFrameBuffer(currentFrame);
           }
         }
-	  }
+      }
     }
   }
 }
@@ -200,15 +182,21 @@ function mouseAction()
 
 function mouseMoved() 
 {
-  for (r = 0; r < rows; r++) {
-    for (c = 0; c < columns; c++) {
-      let cell = frameBuffer[r][c]
-      cV = createVector(cell.centerVector.x + cellOffset + cellSize / 2, cell.centerVector.y + cellOffset + cellSize / 2);
+  const numRows = frameBuffer.length;
+  const numCols = frameBuffer[0].length;
+  for (r = 0; r < numRows; r++) 
+  {
+    for (c = 0; c < numCols; c++) 
+	{
+      let cell = frameBuffer[r][c];
+      cV = cell.position;
       mV = createVector(mouseX, mouseY);
       distance = mV.dist(cV);
-      if (distance < (cellSize / 2)) {
+      if (distance < (CELL_SIZE / 2))
+	  {
+		hoverCell = cell;
 		if ((currentState == appState.DRAWING) || (currentState == appState.ERASING)) {
-		  changeState(frameBuffer[cell.row][cell.col].state == 0 ? appState.DRAWING : appState.ERASING);
+		  changeState(cell.state ? appState.ERASING : appState.DRAWING);
 		}
 	  }
 	}
@@ -216,25 +204,27 @@ function mouseMoved()
 }
 
 
-function renderThumbnail() 
+function renderThumbnail(_frameNumber) 
 {
-  const framePreviewID = previewsList[currentFrame]
+  if (frameList.length == 0) return;
+  const framePreviewID = previewsList[_frameNumber];
   canvas = document.getElementById(`canvas-${framePreviewID}`);
   c2d = canvas.getContext('2d');
   c2d.smoothingEnabled = false;
   c2d.clearRect(0, 0, c2d.canvas.width, c2d.canvas.height);
-  for (var r = 0; r < rows; r++) {
-      for (var c = 0; c < columns; c++){
-          c2d.beginPath();
-          c2d.rect( c * 8, r * 8 , 8, 8);
-          let pixelColor = '#ECF1F1'
-          if(frames.length > 0){
-            pixelColor = frames[currentFrame].matrix[r][c] === 1 ? '#374146' : '#ECF1F1';
-          }
-          c2d.fillStyle = pixelColor
-          c2d.fill();
-          c2d.closePath();
-      }
+  let frame = frameList[_frameNumber];
+  const numRows = frame.matrix.length;
+  const numCols = frame.matrix[0].length;
+  for (r = 0; r < numRows; r++) 
+  {
+    for (c = 0; c < numCols; c++) 
+	{
+      c2d.beginPath();
+      c2d.rect(c * 8, r * 8 , 8, 8);
+      c2d.fillStyle = (frame.matrix[r][c] === 1) ? CELL_ON_COLOR : CELL_OFF_COLOR;
+      c2d.fill();
+      c2d.closePath();
+    }
   }
 }
 
@@ -280,24 +270,24 @@ function setButtonClass(currentState)
   })
 }
 
-function deleteFrame(_frameNumber = currentFrame) 
+
+function deleteFrame() 
 {
-  if (frames.length <= 1) {
+  if (frameList.length <= 1) {
     clearFrame();
     return;
   }
-  frames.splice(_frameNumber, 1);
-  currentFrame = _frameNumber < frames.length ? _frameNumber : _frameNumber - 1;
+  frameList.splice(currentFrame, 1);
+  currentFrame = currentFrame < frameList.length ? currentFrame : frameList.length - 1;
   
-  deleteThumbnail();
-  renderThumbnail();
+  deleteThumbnail(currentFrame);
   goToFrame(currentFrame);
 }
 
 
 function deleteAllFrames() 
 {
-  frames.length = 0;
+  frameList.length = 0;
 
   const targetFrameID = previewsList.forEach((id) => { document.getElementById(id).parentElement.remove(); });
   previewsList.length = 0;
@@ -306,10 +296,10 @@ function deleteAllFrames()
 }
 
 
-function deleteThumbnail(_frameNumber = currentFrame)
+function deleteThumbnail(_frameNumber)
 {
-  const targetFrameID = previewsList[currentFrame]
-  document.getElementById(targetFrameID).parentElement.remove()
+  const targetFrameID = previewsList[_frameNumber];
+  document.getElementById(targetFrameID).parentElement.remove();
   disableButtons();
   previewsList.splice(_frameNumber, 1);
 }
@@ -317,25 +307,33 @@ function deleteThumbnail(_frameNumber = currentFrame)
 
 function clearFrame()
 {
-  for (r = 0; r < rows; r++) {
-    for (c = 0; c < columns; c++) {
-      let cell = frameBuffer[r][c];
-      cell.setState(false);
+  const numRows = frameBuffer.length;
+  const numCols = frameBuffer[0].length;
+  for (r = 0; r < numRows; r++) 
+  {
+    for (c = 0; c < numCols; c++) 
+	{
+	  frameBuffer[r][c].setState(false);
     }
   }
-  commitFrame(currentFrame);
+  commitFrameBuffer(currentFrame);
 }
 
 
 function newFrame(_frameToClone = null)
 {
   let newFrame = _frameToClone;
-  if (newFrame == null) {
-    newFrame = { duration: DEFAULT_FRAME_DURATION, matrix: Array.from(Array(rows), () => new Array(columns).fill(0)), selected: false }
+  if (newFrame == null) 
+  {
+    newFrame = { 
+	  duration: DEFAULT_FRAME_DURATION, 
+	  matrix:   Array.from(Array(NUM_ROWS), () => new Array(NUM_COLUMNS).fill(0)), 
+	  selected: false 
+	}
   }
-  const lastFrame = frames.length - 1;
-  commitFrame(lastFrame);
-  frames.splice(lastFrame + 1, 0, newFrame);
+  const lastFrame = frameList.length - 1;
+  commitFrameBuffer(lastFrame);
+  frameList.splice(lastFrame + 1, 0, newFrame);
   fillFrameBuffer(newFrame);
   currentFrame = lastFrame + 1;
 
@@ -349,15 +347,15 @@ function newFrame(_frameToClone = null)
 
 function toggleFrameSelection(_frameNumber = currentFrame, _newState = null)
 {
-  var newState = (_newState != null) ? _newState : !frames[_frameNumber].selected
-  frames[_frameNumber].selected = newState;
+  var newState = (_newState != null) ? _newState : !frameList[_frameNumber].selected
+  frameList[_frameNumber].selected = newState;
 }
 
 
 function createFramesPreviews()
 {  
   framePreviewID = 0;
-  for(frame in frames) {
+  for(frame in frameList) {
     newFramePreview();
     currentFrame++;
   }
@@ -365,9 +363,10 @@ function createFramesPreviews()
   disableButtons();
 }
 
+
 function newFramePreview(firstFrame = false) 
 {
-  const framePreviewID = `frame-preview-${previewID}`;
+  const framePreviewID        = `frame-preview-${previewID}`;
   const framePreviewContainer = document.createElement('div');
   framePreviewContainer.setAttribute('class', 'frame-preview-container');
 
@@ -377,9 +376,10 @@ function newFramePreview(firstFrame = false)
   currentFrameDurationInput.setAttribute('id', `frame-duration-${framePreviewID}`);
   let referenceDuration = DEFAULT_FRAME_DURATION;
   if(!firstFrame){
-    referenceDuration = frames[currentFrame].duration;
+    referenceDuration = frameList[currentFrame].duration;
   }
-  currentFrameDurationInput.value = currentFrameDuration = referenceDuration;
+  currentFrameDuration            = referenceDuration;
+  currentFrameDurationInput.value = referenceDuration;
   currentFrameDurationInput.addEventListener('input', (event) => {
     const splitString = event.target.id.split('-')
     const id = splitString[splitString.length - 1];
@@ -407,41 +407,45 @@ function newFramePreview(firstFrame = false)
   framePreviewContainer.appendChild(currentFrameDurationInput);
 
   const framesContainer = document.getElementById('frames-container');
-  const addButton = document.getElementById('add-button');
+  const addButton       = document.getElementById('add-button');
   framesContainer.insertBefore(framePreviewContainer, addButton);
   previewsList.push(framePreviewID);
-  renderThumbnail();
+  renderThumbnail(currentFrame);
   frameDurationInput = currentFrameDurationInput;
   previewID++;
 }
 
 
-function commitFrame(_frameNumber = 0) 
+function commitFrameBuffer(_frameNumber) 
 {
   var frame = {};
-  frame.matrix = new Array();
-  var frameSelected = false;
-  if(frames[currentFrame] != null){
-    frameSelected = frames[currentFrame].selected;
+  frame.matrix   = new Array();
+  frame.selected = false;
+  if(frameList[_frameNumber] != null){
+    frame.selected = frameList[_frameNumber].selected;
   }
-  let binaryString = "";
-  let currentBit = 0;
-  let uint32_index = 0;
+  let binaryString   = "";
+  let currentBit     = 0;
+  let bufIdx         = 0;
   let frameUpdatable = false;
-  for (let r = 0; r < rows; r++) {
+  const numRows = frameBuffer.length;
+  const numCols = frameBuffer[0].length;
+  for (r = 0; r < numRows; r++) 
+  {
     frame.matrix[r] = new Array();
-    for (c = 0; c < columns; c++) {
+    for (c = 0; c < numCols; c++) 
+	{
       let cell = frameBuffer[r][c];
       frame.matrix[r][c] = cell.state ? 1 : 0;
       binaryString += cell.state ? 1 : 0;
       if (((currentBit + 1) % 32) == 0) {
         const newValue = parseInt(binaryString, 2);
-        if (uint32Buffer[uint32_index] != newValue) {
-          uint32Buffer[uint32_index] = newValue;
+        if (serialSendBuffer[bufIdx] != newValue) {
+          serialSendBuffer[bufIdx] = newValue;
           frameUpdatable = true;
         }
         binaryString = "";
-        uint32_index++;
+        bufIdx++;
       }
       currentBit++;
     }
@@ -451,100 +455,33 @@ function commitFrame(_frameNumber = 0)
       writeSerialData();
     }
   }
-  frameDurationInput.value = currentFrameDuration;
+  //frameDurationInput.value = currentFrameDuration;
   frame.duration = currentFrameDuration;
-  frames[_frameNumber] = frame;
-  frames[_frameNumber].selected = frameSelected;
+  frameList[_frameNumber] = frame;
   baseFrame = frame;
-  renderThumbnail();
+  renderThumbnail(_frameNumber);
 }
 
 
-function fillFrameBuffer(_frame = frames[currentFrame]) 
+function fillFrameBuffer(_frame) 
 {
-  for (r = 0; r < rows; r++) {
-    for (c = 0; c < columns; c++) {
-      frameBuffer[r][c].state = _frame.matrix[r][c]
+  const numRows = frameBuffer.length;
+  const numCols = frameBuffer[0].length;
+  for (r = 0; r < numRows; r++) 
+  {
+    for (c = 0; c < numCols; c++) 
+	{
+      frameBuffer[r][c].setState(_frame.matrix[r][c]);
     }
   }
 }
 
 
-function changeFrameDuration(_value, frameNumber = currentFrame)
+function changeFrameDuration(_value, _frameNumber)
 {
-  frames[frameNumber].duration = _value;
+  frameList[_frameNumber].duration = _value;
 }
 
-
-/*  
-  CONSOLE FRAME PRINT (DEBUG)
-  The following functions are only useful for debug purposes.
-  They print a text block preview of the frames into the console
-*/
-
-function printFrameBuffer() 
-{
-  console.log("frameBuffer                 selected");
-  var printOut = "";
-  for (r = 0; r < rows; r++) {
-    for (c = 0; c < columns; c++) {
-      let cell = frameBuffer[r][c];
-      printOut += cell.state ? "🟪" : "⬜️";
-
-    }
-    printOut += " > "
-    for (c = 0; c < columns; c++) {
-      let cell = frameBuffer[r][c];
-      printOut += cell.selected ? "🟨" : "⬜️";
-    }
-    printOut += "\n"
-  }
-  console.log(printOut);
-}
-
-
-function printSelectedCells() 
-{
-  console.log("print selected cells");
-  var printOut = "";
-  for (r = 0; r < rows; r++) {
-    for (c = 0; c < columns; c++) {
-      let selectedCell = selectedCells.matrix[r][c];
-      printOut += selectedCell ? "🟪" : "⬜️";
-    }
-    printOut += "\n"
-  }
-  console.log(printOut);
-}
-
-
-function printFrames() 
-{
-  console.log("frames");
-  var printOut = "";
-  for (let f = 0; f < frames.length; f++) {
-    let frame = frames[f].matrix;
-    for (r = 0; r < rows; r++) {
-      for (c = 0; c < columns; c++) {
-        let value = frame[r][c];
-        printOut += value ? "🟪" : "⬜️";
-      }
-      printOut += "\n";
-    }
-    printOut += "\n";
-  }
-  console.log(printOut);
-}
-
-/*  END CONSOLE FRAME PRINT (DEBUG) */
-
-
-/*
-  The following functions export frames content into
-  different kind of structures
-*/
-
-/*  USED FOR OUR 12x8 matrix  */
 
 function exportFrame(exportToClipboard) 
 {
@@ -561,7 +498,7 @@ function exportFrame(exportToClipboard)
 function exportAnimation(exportToClipboard) 
 {
   var animationName = promptForName("Choose a name for your animation. Do NOT use spaces:", exportAnimationName);
-  if(animationName === null) { return; }
+  if (animationName === null) { return; }
   
   exportAnimationName = animationName;  
   var code = generateAnimationCode(animationName);
@@ -574,15 +511,20 @@ function generateFrameCode(frameName)
 {
   var printOut = "const uint32_t " + frameName + "[] = {";
   let binaryString = "";
-  for (r = 0; r < rows; r++) {
-    for (c = 0; c < columns; c++) {
-      let value = frames[currentFrame].matrix[r][c];
-      binaryString += value;
+  var frame = frameList[currentFrame];
+  const numRows = frame.matrix.length;
+  const numCols = frame.matrix[0].length;
+  for (r = 0; r < numRows; r++) 
+  {
+    for (c = 0; c < numCols; c++) 
+	{
+      binaryString += frame.matrix[r][c];
     }
   }
   let uint32String = "";
-  let uint32Array = new Array();
-  for (let c = 0; c < binaryString.length; c++) {
+  let uint32Array  = new Array();
+  for (let c = 0; c < binaryString.length; c++) 
+  {
     uint32String += (binaryString[c]);
     if ((c + 1) % 32 == 0) {
       uint32String = "0x" + parseInt(uint32String, 2).toString(16).padStart(8, '0')
@@ -606,13 +548,18 @@ function generateFrameCode(frameName)
 function generateAnimationCode(animationName) 
 {
   var printOut = "const uint32_t " + animationName + "[][4] = {" + "\n";
-  for (let f = 0; f < frames.length; f++) {
+  for (let f = 0; f < frameList.length; f++) 
+  {
     printOut += "\t{";
-    let frame = frames[f];
+    let frame = frameList[f];
     if (frame.duration == undefined) frame.duration = DEFAULT_FRAME_DURATION;
     let binaryString = "";
-    for (r = 0; r < rows; r++) {
-      for (c = 0; c < columns; c++) {
+    const numRows = frame.matrix.length;
+    const numCols = frame.matrix[0].length;
+    for (r = 0; r < numRows; r++) 
+    {
+      for (c = 0; c < numCols; c++) 
+	  {
         let value = frame.matrix[r][c];
         binaryString += value;
       }
@@ -631,7 +578,7 @@ function generateAnimationCode(animationName)
           printOut += ",\n";
           printOut += `\t\t${frame.duration}`;
           printOut += "\n\t}";
-          if (f != frames.length - 1) {
+          if (f != frameList.length - 1) {
             printOut += ",";
           }
           printOut += "\n";
@@ -687,57 +634,6 @@ function saveStringToFile(str, filename)
 
 
 /*
-  TEMPORARILY UNUSED AND BUGGY
-  DO NOT TOUCH
-*/
-function exportFrames()
-{
-  var printOut = "";
-  printOut += "const uint16_t " + DEFAULT_ANIMATION_NAME + "[][8] = {" + "\n";
-  for (let f = 0; f < frames.length; f++) {
-    let frame = frames[f];
-    printOut += "\t{\n"
-    for (r = 0; r < rows; r++) {
-
-      let uint16_t_value = "";
-      for (c = 0; c < columns; c++) {
-        let value = frame.matrix[r][c];
-        uint16_t_value += value;
-      }
-      uint16_t_value = "\t\t0x" + parseInt(uint16_t_value, 2).toString(16);
-      printOut += uint16_t_value;
-      if (r < rows - 1) {
-        printOut += ",\n";
-      } else {
-        printOut += "\n"
-
-      }
-    }
-    printOut += "\t}"
-    printOut += ""
-    if (f < frames.length - 1) {
-      printOut += ",\n";
-    } else {
-      printOut += "\n"
-    }
-  }
-  printOut += "}"
-
-  /*
-    Create download blob and link,
-    trigger download and then remove it
-  */
-  const blob = new Blob([printOut], { type: "text/plain" });
-  const downloadLink = document.createElement("a");
-  downloadLink.href = URL.createObjectURL(blob);
-  downloadLink.download = "animationFrames.h";
-  document.body.appendChild(downloadLink);
-  downloadLink.click();
-  document.body.removeChild(downloadLink);
-}
-
-
-/*
   Project load/save
 */
 function loadProject() 
@@ -751,10 +647,9 @@ function loadProject()
     fReader.onload = function (event) {
       var fileContent = event.target.result;
       deleteAllFrames();
-      frames = JSON.parse(fileContent);
+      frameList = JSON.parse(fileContent);
       createFramesPreviews();
       goToFrame(0);
-      console.log(fileContent); // do something with the file content
     };
     fReader.readAsText(fileReference);
   });
@@ -775,7 +670,7 @@ function saveProject()
     Create download blob and link,
     trigger download and then remove it
   */
-  const blob = new Blob([JSON.stringify(frames)], { type: "text/plain" });
+  const blob = new Blob([JSON.stringify(frameList)], { type: "text/plain" });
   const downloadLink = document.createElement("a");
   downloadLink.href = URL.createObjectURL(blob);
 
@@ -808,13 +703,17 @@ function shiftMatrix(_direction)
   var wrapEnabled = keyIsDown(ALT);
   tempFrame = offsetArray(baseFrame.matrix, _direction, wrapEnabled);
   
-  for (let r = 0; r < rows; r++) {
-    for (c = 0; c < columns; c++) {
+  const numRows = frameBuffer.length;
+  const numCols = frameBuffer[0].length;
+  for (r = 0; r < numRows; r++) 
+  {
+    for (c = 0; c < numCols; c++) 
+	{
 	  let cell = frameBuffer[r][c];
 	  cell.setState(tempFrame[r][c]);
     }
   }
-  commitFrame(currentFrame);
+  commitFrameBuffer(currentFrame);
 }
 
 
@@ -832,9 +731,11 @@ function playBack(_startFrame = currentFrame)
   }
 }
 
-function playNextFrame() {
+
+function playNextFrame() 
+{
   playbackInterval = setTimeout(() => {
-    if (currentFrame < frames.length - 1) {
+    if (currentFrame < frameList.length - 1) {
       currentFrame++;
       goToFrame(currentFrame);
       playNextFrame();
@@ -854,13 +755,16 @@ function playNextFrame() {
 function goToFrame(_frame) 
 {
   currentFrame = _frame;
-  if (currentFrame >= frames.length) currentFrame = frames.length -1;
-  if (currentFrame < 0) currentFrame = 0;
-  //console.log("going to frame ", currentFrame);  
-  fillFrameBuffer()
-  currentFrameDuration = frames[currentFrame].duration;
-  commitFrame(currentFrame);
+  if (currentFrame >= frameList.length) { currentFrame = frameList.length - 1; }
+  if (currentFrame < 0                ) { currentFrame = 0; }
+  
+  fillFrameBuffer(frameList[currentFrame]);
+  currentFrameDuration = frameList[currentFrame].duration;
+  commitFrameBuffer(currentFrame);
+  
+  // render all thumbnails unselected
   document.getElementsByClassName('frame-preview-container selected').forEach((p) => p.setAttribute('class', 'frame-preview-container'));
+  // "select" the new one
   const previewFrameID = previewsList[currentFrame];
   const selected = document.getElementById(previewFrameID);
   selected.parentElement.setAttribute('class', 'frame-preview-container selected');
@@ -959,7 +863,7 @@ function disableButtons()
 {
   const deleteButton = document.getElementById('delete-button');
   const play = document.getElementById('play');
-  if (frames.length === 1) {
+  if (frameList.length === 1) {
     deleteButton.setAttribute('disabled', true);
     play.setAttribute('disabled', true);
   } else {
