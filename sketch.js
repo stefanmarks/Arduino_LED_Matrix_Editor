@@ -878,7 +878,6 @@ function disableButtons()
 }
 
 
-// LIVE VIEW DIALOGS 
 function showLiveTestDialog(show) 
 {
   const display = show ? "block" : "none"
@@ -911,7 +910,8 @@ function deviceConnectedBack()
 }
 
 
-async function openPort() {
+async function openPort() 
+{
   serialPort = await navigator.serial.requestPort();
 
   /* on WebSerial connect/disconnect events seem not to be working */
@@ -928,40 +928,36 @@ async function openPort() {
 }
 
 
-function setPortState(_portState) {
+function setPortState(_portState) 
+{
   console.log(_portState);
   serialPortCheckInterval = setInterval(() => {
-
     if (serialPort.writable && serialPort.readable) {
-      serialPortReady = true;
-      if (!serialLinkButton.selected) {
-        serialLinkButton.loadIcon("UIassets/link_on.png");
-        serialLinkButton.selected = true;
+      if (!serialPortReady)
+	  {
+		serialPortReady = true;
         console.log("Serial Port Open");
       }
-
     } else {
-      serialPortReady = false;
-      if (serialLinkButton.selected) {
-        serialLinkButton.loadIcon("UIassets/link_off.png");
-        serialLinkButton.selected = false;
+      if (serialPortReady)
+	  {
+		serialPortReady = false;
         console.log("Serial Port Closed");
       }
     }
-  }, 100);
+  }, 500);
 }
 
 
-async function writeSerialData(_serialData) {
-  if (!serialWriter) {
+async function writeSerialData(_serialData) 
+{
+  if (!serialWriter) 
+  {
     serialWriter = serialPort.writable.getWriter(); // create a writable stream
-
   }
-  if (serialPort.writable && serialPort.readable) {
-    // debugger;
-    // const encodedData = new Uint8Array([0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff]);
+  if (serialPort.writable && serialPort.readable) 
+  {
     const encodedData = serialSendBuffer;
-    // debugger;
     await serialWriter.write(encodedData);
   }
 }
